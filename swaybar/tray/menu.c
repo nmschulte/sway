@@ -35,6 +35,7 @@ void destroy_menu(struct swaybar_menu_item *menu) {
 
 	struct swaybar_popup *popup = menu->sni->tray->popup;
 	if (popup && popup->sni == menu->sni) {
+		sway_log(SWAY_DEBUG, "closing popup due to destroy_menu");
 		close_popup(popup);
 	}
 
@@ -229,6 +230,8 @@ static int get_layout_callback(sd_bus_message *msg, void *data,
 		} else if (sni->menu) {
 			struct swaybar_menu_item **menu_ptr = menu_find_item(&sni->menu,
 					item->id);
+			sway_log(SWAY_DEBUG, "%s%s call destroy_menu because menu set",
+					sni->service, sni->menu_path);
 			destroy_menu(*menu_ptr);
 			*menu_ptr = item;
 		} else {
@@ -256,6 +259,8 @@ static int get_layout_callback(sd_bus_message *msg, void *data,
 		sni->menu = NULL;
 	} else if (popup->sni == sni) {
 		if (popup->popup_surface) {
+			sway_log(SWAY_DEBUG, "%s%s closing popup instead of redrawing",
+					sni->service, sni->menu_path);
 			close_popup(popup); // TODO enhancement: redraw instead of closing
 		} else {
 			open_popup_id(sni, 0);
@@ -328,6 +333,8 @@ static int handle_items_properties_updated(sd_bus_message *msg, void *data,
 					item->visible = true;
 				} else if (strcmp(*key, "children-display") == 0) {
 					for (int i = 0; i < item->children->length; ++i) {
+						sway_log(SWAY_DEBUG, "%s%s call destroy_menu because item properties updated children-display",
+								sni->service, sni->menu_path);
 						destroy_menu(item->children->items[i]);
 					}
 					list_free(item->children);
@@ -338,6 +345,7 @@ static int handle_items_properties_updated(sd_bus_message *msg, void *data,
 
 	struct swaybar_popup *popup = sni->tray->popup;
 	if (popup->sni == sni) {
+		sway_log(SWAY_DEBUG, "closing popup instead of redrawing");
 		close_popup(popup); // TODO enhancement: redraw instead of closing
 	}
 
@@ -346,6 +354,7 @@ static int handle_items_properties_updated(sd_bus_message *msg, void *data,
 
 static int handle_item_activation_requested(sd_bus_message *msg, void *data,
 		sd_bus_error *error) {
+	sway_log(SWAY_DEBUG, "TODO: item activation requested");
 	return 0; // TODO
 }
 
@@ -436,6 +445,7 @@ static void close_popup(struct swaybar_popup *popup) {
 		return;
 	}
 
+	sway_log(SWAY_DEBUG, "closing popup");
 	destroy_popup_surface(popup->popup_surface);
 	popup->popup_surface = NULL;
 	popup->sni = NULL;
@@ -446,6 +456,7 @@ void destroy_popup(struct swaybar_popup *popup) {
 		return;
 	}
 
+	sway_log(SWAY_DEBUG, "destroying popup");
 	close_popup(popup);
 	popup->tray->popup = NULL;
 	xdg_wm_base_destroy(popup->wm_base);
@@ -499,6 +510,7 @@ static void xdg_popup_configure(void *data, struct xdg_popup *xdg_popup,
 
 static void xdg_popup_done(void *data, struct xdg_popup *xdg_popup) {
 	struct swaybar_popup *popup = data;
+	sway_log(SWAY_DEBUG, "closing popup due to xdg_popup_done");
 	close_popup(popup);
 }
 
@@ -899,6 +911,7 @@ bool popup_pointer_motion(void *data, struct wl_pointer *wl_pointer,
 
 bool popup_pointer_button(void *data, struct wl_pointer *wl_pointer,
 		uint32_t serial, uint32_t time_, uint32_t button, uint32_t state) {
+	sway_log(SWAY_DEBUG, "button: %d - state: %d", button, state);
 	struct swaybar_seat *seat = data;
 	struct swaybar_tray *tray = seat->bar->tray;
 	if (!(tray && tray->popup)) {
@@ -911,6 +924,7 @@ bool popup_pointer_button(void *data, struct wl_pointer *wl_pointer,
 		// intentionally left blank
 	} else if (popup->popup_surface) {
 		if (!popup->pointer_focus) {
+			sway_log(SWAY_DEBUG, "closing unfocused open popup");
 			close_popup(popup);
 		} else if (button == BTN_LEFT) {
 			list_t *hotspots = popup->pointer_focus->hotspots;

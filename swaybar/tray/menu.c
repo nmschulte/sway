@@ -909,41 +909,43 @@ bool popup_pointer_button(void *data, struct wl_pointer *wl_pointer,
 	float y = seat->pointer.y * popup->output->scale;
 	if (state != WL_POINTER_BUTTON_STATE_PRESSED) {
 		// intentionally left blank
-	} else if (!popup->pointer_focus) {
-		close_popup(popup);
-	} else if (button == BTN_LEFT) {
-		list_t *hotspots = popup->pointer_focus->hotspots;
-		for (int i = 0; i < hotspots->length; ++i) {
-			struct swaybar_popup_hotspot *hotspot = hotspots->items[i];
-			if (y < hotspot->y) {
-				struct swaybar_menu_item *item = hotspot->item;
+	} else if (popup->popup_surface) {
+		if (!popup->pointer_focus) {
+			close_popup(popup);
+		} else if (button == BTN_LEFT) {
+			list_t *hotspots = popup->pointer_focus->hotspots;
+			for (int i = 0; i < hotspots->length; ++i) {
+				struct swaybar_popup_hotspot *hotspot = hotspots->items[i];
+				if (y < hotspot->y) {
+					struct swaybar_menu_item *item = hotspot->item;
 
-				if (!item->enabled || item->is_separator) {
+					if (!item->enabled || item->is_separator) {
+						break;
+					}
+
+					struct swaybar_sni *sni = popup->sni;
+					if (item->children) {
+						destroy_popup_surface(popup->pointer_focus->child);
+						popup->pointer_focus->child = NULL;
+						popup->serial = serial;
+						popup->x = 0;
+						if (tray->bar->config->position & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) { // top bar
+							popup->y = i ? ((struct swaybar_popup_hotspot *)hotspots->items[i-1])->y : 0;
+						} else {
+							popup->y = hotspot->y;
+						}
+						popup->y /= popup->output->scale;
+						open_popup_id(sni, item->id);
+					} else {
+						sd_bus_call_method_async(tray->bus, NULL, sni->service,
+								sni->menu_path, menu_interface, "Event", NULL, NULL,
+								"isvu", item->id, "clicked", "y", 0, time(NULL));
+						sway_log(SWAY_DEBUG, "%s%s popup clicked id %d",
+								sni->service, sni->menu_path, item->id);
+						close_popup(popup);
+					}
 					break;
 				}
-
-				struct swaybar_sni *sni = popup->sni;
-				if (item->children) {
-					destroy_popup_surface(popup->pointer_focus->child);
-					popup->pointer_focus->child = NULL;
-					popup->serial = serial;
-					popup->x = 0;
-					if (tray->bar->config->position & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) { // top bar
-						popup->y = i ? ((struct swaybar_popup_hotspot *)hotspots->items[i-1])->y : 0;
-					} else {
-						popup->y = hotspot->y;
-					}
-					popup->y /= popup->output->scale;
-					open_popup_id(sni, item->id);
-				} else {
-					sd_bus_call_method_async(tray->bus, NULL, sni->service,
-							sni->menu_path, menu_interface, "Event", NULL, NULL,
-							"isvu", item->id, "clicked", "y", 0, time(NULL));
-					sway_log(SWAY_DEBUG, "%s%s popup clicked id %d",
-							sni->service, sni->menu_path, item->id);
-					close_popup(popup);
-				}
-				break;
 			}
 		}
 	}

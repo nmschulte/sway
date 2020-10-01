@@ -343,6 +343,7 @@ static void handle_click(struct swaybar_sni *sni, struct swaybar_output *output,
 	wl_list_for_each(binding, &sni->tray->bar->config->tray_bindings, link) {
 		if (binding->button == button) {
 			method = binding->command;
+			sway_log(SWAY_DEBUG, "click with method from binding %s", method);
 			break;
 		}
 	}
@@ -361,6 +362,7 @@ static void handle_click(struct swaybar_sni *sni, struct swaybar_output *output,
 		};
 		method = default_bindings[event_to_x11_button(button)];
 	}
+	sway_log(SWAY_DEBUG, "click with method %s", method);
 	if (strcmp(method, "nop") == 0) {
 		return;
 	}

@@ -175,7 +175,7 @@ static int update_item_properties(struct swaybar_menu_item *item,
 			}
 			log_value = children_display;
 		} else {
-			// Ignored: shortcut, disposition
+			// Ignored: shortcut, disposition, accessible-desc
 			sd_bus_message_skip(msg, "v");
 			log_value = "<ignored>";
 		}
@@ -401,7 +401,7 @@ static void setup_menu(struct swaybar_sni *sni) {
 		free(slot);
 	}
 
-	sni_menu_match_signal_async(sni, "ItemPropertiesUpdated", handle_item_properties_updated);
+	sni_menu_match_signal_async(sni, "ItemsPropertiesUpdated", handle_item_properties_updated);
 	sni_menu_match_signal_async(sni, "LayoutUpdated", handle_layout_updated);
 	sni_menu_match_signal_async(sni, "ItemActivationRequested", handle_item_activation_requested);
 

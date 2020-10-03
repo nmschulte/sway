@@ -175,7 +175,7 @@ static int update_item_properties(struct swaybar_menu_item *item,
 			}
 			log_value = children_display;
 		} else {
-			// Ignored: shortcut, disposition
+			// Ignored: shortcut, disposition, accessible-desc
 			sd_bus_message_skip(msg, "v");
 			log_value = "<ignored>";
 		}

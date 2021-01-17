@@ -270,6 +270,7 @@ static int get_layout_callback(sd_bus_message *msg, void *data,
 }
 
 static void update_menu(struct swaybar_sni *sni, int id) {
+	sway_log(SWAY_DEBUG, "%s%s %d update_menu", sni->service, sni->menu_path, id);
 	struct swaybar_sni_slot *slot = calloc(1, sizeof(struct swaybar_sni_slot));
 	slot->sni = sni;
 
@@ -299,7 +300,7 @@ static int handle_layout_updated(sd_bus_message *msg, void *data,
 static int handle_items_properties_updated(sd_bus_message *msg, void *data,
 		sd_bus_error *error) {
 	struct swaybar_sni *sni = data;
-	sway_log(SWAY_DEBUG, "%s%s item properties updated", sni->service, sni->menu_path);
+	sway_log(SWAY_DEBUG, "%s%s items properties updated", sni->service, sni->menu_path);
 
 	// update properties
 	sd_bus_message_enter_container(msg, 'a', "(ia{sv})");
@@ -333,8 +334,6 @@ static int handle_items_properties_updated(sd_bus_message *msg, void *data,
 					item->visible = true;
 				} else if (strcmp(*key, "children-display") == 0) {
 					for (int i = 0; i < item->children->length; ++i) {
-						sway_log(SWAY_DEBUG, "%s%s call destroy_menu because item properties updated children-display",
-								sni->service, sni->menu_path);
 						destroy_menu(item->children->items[i]);
 					}
 					list_free(item->children);
@@ -354,7 +353,8 @@ static int handle_items_properties_updated(sd_bus_message *msg, void *data,
 
 static int handle_item_activation_requested(sd_bus_message *msg, void *data,
 		sd_bus_error *error) {
-	sway_log(SWAY_DEBUG, "TODO: item activation requested");
+	struct swaybar_sni *sni = data;
+	sway_log(SWAY_DEBUG, "%s%s item activation requested (TODO)", sni->service, sni->menu_path);
 	return 0; // TODO
 }
 
@@ -397,6 +397,7 @@ static int get_icon_theme_path_callback(sd_bus_message *msg, void *data,
 }
 
 static void setup_menu(struct swaybar_sni *sni) {
+  sway_log(SWAY_DEBUG, "%s%s setup_menu", sni->service, sni->menu_path);
 	struct swaybar_sni_slot *slot = calloc(1, sizeof(struct swaybar_sni_slot));
 	slot->sni = sni;
 	int ret = sd_bus_call_method_async(sni->tray->bus, &slot->slot, sni->service,
@@ -435,7 +436,7 @@ static void destroy_popup_surface(struct swaybar_popup_surface *popup_surface) {
 	struct swaybar_sni *sni = popup_surface->item->sni;
 	sd_bus_call_method_async(sni->tray->bus, NULL, sni->service, sni->menu_path,
 			menu_interface, "Event", NULL, NULL, "isvu", id, "closed", "y", 0, time(NULL));
-	sway_log(SWAY_DEBUG, "%s%s closed id %d", sni->service, sni->menu_path, id);
+	sway_log(SWAY_DEBUG, "%s%s %d closed", sni->service, sni->menu_path, id);
 
 	free(popup_surface);
 }
@@ -445,7 +446,8 @@ static void close_popup(struct swaybar_popup *popup) {
 		return;
 	}
 
-	sway_log(SWAY_DEBUG, "closing popup");
+	//sway_log(SWAY_DEBUG, "%s%s %d close_popup", popup->sni->service, popup->sni->menu_path, popup->popup_surface->item->id);
+	sway_log(SWAY_DEBUG, "%s%s close_popup", popup->sni->service, popup->sni->menu_path);
 	destroy_popup_surface(popup->popup_surface);
 	popup->popup_surface = NULL;
 	popup->sni = NULL;
@@ -456,7 +458,7 @@ void destroy_popup(struct swaybar_popup *popup) {
 		return;
 	}
 
-	sway_log(SWAY_DEBUG, "destroying popup");
+	sway_log(SWAY_DEBUG, "%s%s %d destroy_popup", popup->sni->service, popup->sni->menu_path, popup->popup_surface->item->id);
 	close_popup(popup);
 	popup->tray->popup = NULL;
 	xdg_wm_base_destroy(popup->wm_base);
@@ -520,7 +522,7 @@ static const struct xdg_popup_listener xdg_popup_listener = {
 };
 
 static void show_popup_id(struct swaybar_sni *sni, int id) {
-	sway_log(SWAY_DEBUG, "%s%s showing popup for id %d", sni->service, sni->menu_path, id);
+	sway_log(SWAY_DEBUG, "%s%s %d show_popup_id", sni->service, sni->menu_path, id);
 
 	cairo_surface_t *recorder =
 		cairo_recording_surface_create(CAIRO_CONTENT_COLOR_ALPHA, NULL);
@@ -742,13 +744,14 @@ static void show_popup_id(struct swaybar_sni *sni, int id) {
 
 	sd_bus_call_method_async(sni->tray->bus, NULL, sni->service, sni->menu_path,
 			menu_interface, "Event", NULL, NULL, "isvu", id, "opened", "y", 0, time(NULL));
-	sway_log(SWAY_DEBUG, "%s%s opened id %d", sni->service, sni->menu_path, id);
+	sway_log(SWAY_DEBUG, "%s%s %d opened", sni->service, sni->menu_path, id);
 
 cleanup:
 	cairo_surface_destroy(recorder);
 	cairo_destroy(cairo);
 	return;
 error:
+  sway_log(SWAY_DEBUG, "%s%s %d show_popup_id error (height: %d), no popup_surface", sni->service, sni->menu_path, id, height);
 	list_free_items_and_destroy(hotspots);
 	free(popup_surface);
 	goto cleanup;
@@ -759,6 +762,7 @@ static int about_to_show_callback(sd_bus_message *msg, void *data,
 	struct swaybar_sni_slot *slot = data;
 	struct swaybar_sni *sni = slot->sni;
 	int id = slot->menu_id;
+	sway_log(SWAY_DEBUG, "%s%s %d AboutToShow callback", sni->service, sni->menu_path, id);
 	wl_list_remove(&slot->link);
 	free(slot);
 
@@ -773,6 +777,7 @@ static int about_to_show_callback(sd_bus_message *msg, void *data,
 }
 
 static void open_popup_id(struct swaybar_sni *sni, int id) {
+	sway_log(SWAY_DEBUG, "%s%s %d open_popup_id", sni->service, sni->menu_path, id);
 	struct swaybar_sni_slot *slot = calloc(1, sizeof(struct swaybar_sni_slot));
 	slot->sni = sni;
 	slot->menu_id = id;
@@ -791,7 +796,7 @@ static void open_popup_id(struct swaybar_sni *sni, int id) {
 
 void open_popup(struct swaybar_sni *sni, struct swaybar_output *output,
 		struct wl_seat *seat, uint32_t serial, int x, int y) {
-	sway_log(SWAY_DEBUG, "%s%s opening popup", sni->service, sni->menu_path);
+	sway_log(SWAY_DEBUG, "%s%s open_popup", sni->service, sni->menu_path);
 
 	struct swaybar_tray *tray = sni->tray;
 	struct swaybar_popup *popup = tray->popup;
@@ -902,7 +907,7 @@ bool popup_pointer_motion(void *data, struct wl_pointer *wl_pointer,
 		sd_bus_call_method_async(tray->bus, NULL, sni->service,
 				sni->menu_path, menu_interface, "Event", NULL, NULL, "isvu",
 				item->id, "hovered", "y", 0, time(NULL));
-		sway_log(SWAY_DEBUG, "%s%s hovered id %d", sni->service, sni->menu_path, item->id);
+		sway_log(SWAY_DEBUG, "%s%s %d hovered", sni->service, sni->menu_path, item->id);
 	}
 	popup->last_hover = hotspot_ptr;
 
@@ -954,8 +959,8 @@ bool popup_pointer_button(void *data, struct wl_pointer *wl_pointer,
 						sd_bus_call_method_async(tray->bus, NULL, sni->service,
 								sni->menu_path, menu_interface, "Event", NULL, NULL,
 								"isvu", item->id, "clicked", "y", 0, time(NULL));
-						sway_log(SWAY_DEBUG, "%s%s popup clicked id %d",
-								sni->service, sni->menu_path, item->id);
+						sway_log(SWAY_DEBUG, "%s%s %d popup clicked id %d",
+								sni->service, sni->menu_path, popup->popup_surface->item->id, item->id);
 						close_popup(popup);
 					}
 					break;

@@ -633,7 +633,7 @@ static void show_popup_id(struct swaybar_sni *sni, int id) {
 			int text_height;
 			get_text_size(cairo, config->font, NULL, &text_height, NULL,
 					output->scale, false, "%s", item->label);
-			int size = 16;
+			int size = 16 * output->scale;
 			int x = -2 * padding - size;
 			int y = height + padding + (text_height - size + 1) / 2;
 			cairo_set_source_u32(cairo, config->colors.focused_statusline);

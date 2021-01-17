@@ -22,9 +22,11 @@
 
 
 /* MENU */
+bool popup_open = false;
 
 static void close_popup(struct swaybar_popup *popup);
 static void open_popup_id(struct swaybar_sni *sni, int id);
+static void show_popup_id(struct swaybar_sni *sni, int id);
 
 static const char *menu_interface = "com.canonical.dbusmenu";
 
@@ -257,7 +259,9 @@ static int get_layout_callback(sd_bus_message *msg, void *data,
 					item->id);
 			sway_log(SWAY_DEBUG, "%s%s call destroy_menu because menu set",
 					sni->service, sni->menu_path);
+			bool o = popup_open;
 			destroy_menu(*menu_ptr);
+			popup_open = o;
 			*menu_ptr = item;
 		} else {
 			sni->menu = item;
@@ -288,7 +292,11 @@ static int get_layout_callback(sd_bus_message *msg, void *data,
 					sni->service, sni->menu_path);
 			close_popup(popup); // TODO enhancement: redraw instead of closing
 		} else {
-			open_popup_id(sni, 0);
+			if (popup_open) {
+				show_popup_id(sni, 0);
+			} else {
+				open_popup_id(sni, 0);
+			}
 		}
 	}
 	return ret;
@@ -365,9 +373,11 @@ static int handle_items_properties_updated(sd_bus_message *msg, void *data,
 					item->visible = true;
 				} else if (strcmp(*key, "children-display") == 0) {
 					//changed |= true;
+					bool o = popup_open;
 					for (int i = 0; i < item->children->length; ++i) {
 						destroy_menu(item->children->items[i]);
 					}
+					popup_open = o;
 					list_free(item->children);
 				}
 			}
@@ -375,9 +385,12 @@ static int handle_items_properties_updated(sd_bus_message *msg, void *data,
 	}
 
 	struct swaybar_popup *popup = sni->tray->popup;
-	if (popup->sni == sni) {
-		sway_log(SWAY_DEBUG, "closing popup instead of redrawing");
-		close_popup(popup); // TODO enhancement: redraw instead of closing
+	if (popup->sni == sni && popup->popup_surface) {
+	// if (popup->sni == sni && popup_open) {
+		sway_log(SWAY_DEBUG, "%s%s %d re-opening popup", sni->service, sni->menu_path, popup->popup_surface->item->id);
+		close_popup(popup);
+		popup->sni = sni;
+		show_popup_id(sni, 0);
 	}
 
 	return 0;
@@ -479,10 +492,11 @@ static void close_popup(struct swaybar_popup *popup) {
 	}
 
 	//sway_log(SWAY_DEBUG, "%s%s %d close_popup", popup->sni->service, popup->sni->menu_path, popup->popup_surface->item->id);
-	sway_log(SWAY_DEBUG, "%s%s close_popup", popup->sni->service, popup->sni->menu_path);
+	sway_log(SWAY_DEBUG, "%s%s close_popup %p", popup->sni->service, popup->sni->menu_path, popup);
 	destroy_popup_surface(popup->popup_surface);
 	popup->popup_surface = NULL;
-	// popup->sni = NULL;
+	popup->sni = NULL;
+	popup_open = false;
 }
 
 void destroy_popup(struct swaybar_popup *popup) {
@@ -554,6 +568,8 @@ static const struct xdg_popup_listener xdg_popup_listener = {
 };
 
 static void show_popup_id(struct swaybar_sni *sni, int id) {
+	bool o = popup_open;
+	popup_open = true;
 	sway_log(SWAY_DEBUG, "%s%s %d show_popup_id", sni->service, sni->menu_path, id);
 
 	cairo_surface_t *recorder =
@@ -774,9 +790,11 @@ static void show_popup_id(struct swaybar_sni *sni, int id) {
 	popup_surface->xdg_surface = xdg_surface;
 	popup_surface->surface = surface;
 
-	sd_bus_call_method_async(sni->tray->bus, NULL, sni->service, sni->menu_path,
-			menu_interface, "Event", NULL, NULL, "isvu", id, "opened", "y", 0, time(NULL));
-	sway_log(SWAY_DEBUG, "%s%s %d opened", sni->service, sni->menu_path, id);
+	if (!o) {
+		sd_bus_call_method_async(sni->tray->bus, NULL, sni->service, sni->menu_path,
+				menu_interface, "Event", NULL, NULL, "isvu", id, "opened", "y", 0, time(NULL));
+		sway_log(SWAY_DEBUG, "%s%s %d opened", sni->service, sni->menu_path, id);
+	}
 
 cleanup:
 	cairo_surface_destroy(recorder);

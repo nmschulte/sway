@@ -504,7 +504,7 @@ static void close_popup(struct swaybar_popup *popup) {
 	}
 
 	//sway_log(SWAY_DEBUG, "%s%s %d close_popup", popup->sni->service, popup->sni->menu_path, popup->popup_surface->item->id);
-	sway_log(SWAY_DEBUG, "%s%s close_popup %p %p", popup->sni->service, popup->sni->menu_path, popup, popup->popup_surface);
+	//sway_log(SWAY_DEBUG, "%s%s close_popup %p %p", popup->sni->service, popup->sni->menu_path, popup, popup->popup_surface);
 	destroy_popup_surface(popup->popup_surface);
 	popup->popup_surface = NULL;
 	popup->pointer_focus = NULL;

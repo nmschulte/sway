@@ -169,6 +169,10 @@ static int update_item_properties(struct swaybar_menu_item *item,
 			char *children_display;
 			sd_bus_message_read(msg, "v", "s", &children_display);
 			if (strcmp(children_display, "submenu") == 0) {
+				if (item->children) {
+					sway_log(SWAY_DEBUG, "%s%s %d free existing item->children? (%d)", item->sni->service, item->sni->menu_path, item->id, item->children->length);
+					// list_free(item->children);
+				}
 				item->children = create_list();
 				if (!item->children) {
 					return -ENOMEM;

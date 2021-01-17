@@ -191,6 +191,7 @@ static int get_layout_callback(sd_bus_message *msg, void *data,
 		sd_bus_error *error) {
 	struct swaybar_sni_slot *slot = data;
 	struct swaybar_sni *sni = slot->sni;
+	int id = slot->menu_id;
 	wl_list_remove(&slot->link);
 	free(slot);
 
@@ -200,7 +201,10 @@ static int get_layout_callback(sd_bus_message *msg, void *data,
 		return sd_bus_message_get_errno(msg);
 	}
 
-	sd_bus_message_skip(msg, "u"); // menu revision
+	uint32_t revision;
+	sd_bus_message_read_basic(msg, 'u', &revision);
+	sway_log(SWAY_DEBUG, "%s%s %d GetLayout callback (revision %u)", sni->service, sni->menu_path, id, revision);
+
 	int ret = 0;
 	struct swaybar_menu_item *parent = NULL;
 	while (!sd_bus_message_at_end(msg, 1)) {
@@ -289,10 +293,11 @@ static void update_menu(struct swaybar_sni *sni, int id) {
 static int handle_layout_updated(sd_bus_message *msg, void *data,
 		sd_bus_error *error) {
 	struct swaybar_sni *sni = data;
-	sway_log(SWAY_DEBUG, "%s%s layout updated", sni->service, sni->menu_path);
 
+	uint32_t revision;
 	int id;
-	sd_bus_message_read(msg, "ui", NULL, &id);
+	sd_bus_message_read(msg, "ui", &revision, &id);
+	sway_log(SWAY_DEBUG, "%s%s %d layout updated (revision %u)", sni->service, sni->menu_path, id, revision);
 	update_menu(sni, id);
 	return 0;
 }

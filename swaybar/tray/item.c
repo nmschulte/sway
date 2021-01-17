@@ -307,7 +307,7 @@ void destroy_sni(struct swaybar_sni *sni) {
 		return;
 	}
 
-	destroy_menu(sni->menu);
+	destroy_menu(sni->menu, true);
 	if (sni->menu_icon_theme_paths) {
 		for (char **path = sni->menu_icon_theme_paths; *path; ++path) {
 			free(path);

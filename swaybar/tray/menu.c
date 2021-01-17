@@ -34,7 +34,7 @@ void destroy_menu(struct swaybar_menu_item *menu) {
 	}
 
 	struct swaybar_popup *popup = menu->sni->tray->popup;
-	if (popup && popup->sni == menu->sni) {
+	if (popup && popup->sni == menu->sni && popup->popup_surface) {
 		sway_log(SWAY_DEBUG, "closing popup due to destroy_menu");
 		close_popup(popup);
 	}

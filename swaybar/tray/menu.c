@@ -343,7 +343,19 @@ static int handle_items_properties_updated(sd_bus_message *msg, void *data,
 		sd_bus_message_enter_container(msg, 'r', "ia{sv}");
 		int id;
 		sd_bus_message_read_basic(msg, 'i', &id);
-		update_item_properties(*menu_find_item(&sni->menu, id), msg, &changed);
+		struct swaybar_menu_item **item = menu_find_item(&sni->menu, id);
+		if (!item) {
+			// Zoom bug: sends multiple ItemsPropertiesUpdated signals for each service
+			// beginning with org.kde.StatusNotifierItem (vs e.g. org/ayataya/NotificationItem)
+			sway_log(SWAY_ERROR, "%s%s %d item not found", sni->service, sni->menu_path, id);
+			//struct swaybar_menu_item *i = calloc(1, sizeof(struct swaybar_menu_item));
+			//i->sni = sni;
+			//update_item_properties(i, msg, &changed);
+			//free(i);
+			sd_bus_message_skip(msg, NULL);
+		} else {
+			update_item_properties(*item, msg, &changed);
+		}
 	}
 
 	// removed properties
@@ -409,6 +421,7 @@ static void sni_menu_match_signal_async(struct swaybar_sni *sni, char *signal,
 	int ret = sd_bus_match_signal_async(sni->tray->bus, &slot->slot, sni->service,
 			sni->menu_path, menu_interface, signal, callback, NULL, sni);
 	if (ret >= 0) {
+		sway_log(SWAY_DEBUG, "%s%s %s signal match setup", sni->service, sni->menu_path, signal);
 		wl_list_insert(&sni->slots, &slot->link);
 	} else {
 		sway_log(SWAY_ERROR, "%s%s failed to subscribe to signal %s: %s",

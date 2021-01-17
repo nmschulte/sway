@@ -39,7 +39,7 @@ struct swaybar_menu_item {
 	list_t *children; // struct swaybar_menu_item *
 };
 
-void destroy_menu(struct swaybar_menu_item *menu);
+void destroy_menu(struct swaybar_menu_item *menu, bool close);
 
 
 /* POPUP */

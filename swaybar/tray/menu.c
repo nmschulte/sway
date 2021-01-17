@@ -30,13 +30,13 @@ static void show_popup_id(struct swaybar_sni *sni, int id);
 
 static const char *menu_interface = "com.canonical.dbusmenu";
 
-void destroy_menu(struct swaybar_menu_item *menu) {
+void destroy_menu(struct swaybar_menu_item *menu, bool close) {
 	if (!menu) {
 		return;
 	}
 
 	struct swaybar_popup *popup = menu->sni->tray->popup;
-	if (popup && popup->sni == menu->sni && popup->popup_surface) {
+	if (popup && popup->sni == menu->sni && popup->popup_surface && close) {
 		sway_log(SWAY_DEBUG, "closing popup due to destroy_menu");
 		close_popup(popup);
 	}
@@ -46,7 +46,7 @@ void destroy_menu(struct swaybar_menu_item *menu) {
 	cairo_surface_destroy(menu->icon_data);
 	if (menu->children) {
 		for (int i = 0; i < menu->children->length; ++i) {
-			destroy_menu(menu->children->items[i]);
+			destroy_menu(menu->children->items[i], false);
 		}
 		list_free(menu->children);
 	}
@@ -230,6 +230,7 @@ static int get_layout_callback(sd_bus_message *msg, void *data,
 	bool changed = false;
 	int ret = 0;
 	struct swaybar_menu_item *parent = NULL;
+	list_t *stale_items = create_list(); // struct swaybar_menu_item *
 	while (!sd_bus_message_at_end(msg, 1)) {
 		sd_bus_message_enter_container(msg, 'r', "ia{sv}av");
 
@@ -257,11 +258,7 @@ static int get_layout_callback(sd_bus_message *msg, void *data,
 		} else if (sni->menu) {
 			struct swaybar_menu_item **menu_ptr = menu_find_item(&sni->menu,
 					item->id);
-			sway_log(SWAY_DEBUG, "%s%s call destroy_menu because menu set",
-					sni->service, sni->menu_path);
-			bool o = popup_open;
-			destroy_menu(*menu_ptr);
-			popup_open = o;
+			list_add(stale_items, *menu_ptr);
 			*menu_ptr = item;
 		} else {
 			sni->menu = item;
@@ -284,21 +281,25 @@ static int get_layout_callback(sd_bus_message *msg, void *data,
 	if (ret < 0) {
 		sway_log(SWAY_ERROR, "%s%s failed to read menu layout: %s",
 				sni->service, sni->menu_path, strerror(-ret));
-		destroy_menu(sni->menu);
+		destroy_menu(sni->menu, true);
 		sni->menu = NULL;
 	} else if (popup->sni == sni) {
 		if (popup->popup_surface) {
-			sway_log(SWAY_DEBUG, "%s%s closing popup instead of redrawing",
-					sni->service, sni->menu_path);
 			close_popup(popup); // TODO enhancement: redraw instead of closing
+			for (int i = 0; i < stale_items->length; ++i) {
+				destroy_menu(stale_items->items[i], false);
+			}
+			popup->sni = sni;
+			show_popup_id(sni, id);
 		} else {
 			if (popup_open) {
-				show_popup_id(sni, 0);
+				show_popup_id(sni, id);
 			} else {
-				open_popup_id(sni, 0);
+				open_popup_id(sni, id);
 			}
 		}
 	}
+	list_free(stale_items);
 	return ret;
 }
 
@@ -385,11 +386,9 @@ static int handle_items_properties_updated(sd_bus_message *msg, void *data,
 					item->visible = true;
 				} else if (strcmp(*key, "children-display") == 0) {
 					//changed |= true;
-					bool o = popup_open;
 					for (int i = 0; i < item->children->length; ++i) {
-						destroy_menu(item->children->items[i]);
+						destroy_menu(item->children->items[i], false);
 					}
-					popup_open = o;
 					list_free(item->children);
 				}
 			}
@@ -505,9 +504,10 @@ static void close_popup(struct swaybar_popup *popup) {
 	}
 
 	//sway_log(SWAY_DEBUG, "%s%s %d close_popup", popup->sni->service, popup->sni->menu_path, popup->popup_surface->item->id);
-	sway_log(SWAY_DEBUG, "%s%s close_popup %p", popup->sni->service, popup->sni->menu_path, popup);
+	sway_log(SWAY_DEBUG, "%s%s close_popup %p %p", popup->sni->service, popup->sni->menu_path, popup, popup->popup_surface);
 	destroy_popup_surface(popup->popup_surface);
 	popup->popup_surface = NULL;
+	popup->pointer_focus = NULL;
 	popup->sni = NULL;
 	popup_open = false;
 }
@@ -517,7 +517,6 @@ void destroy_popup(struct swaybar_popup *popup) {
 		return;
 	}
 
-	sway_log(SWAY_DEBUG, "%s%s %d destroy_popup", popup->sni->service, popup->sni->menu_path, popup->popup_surface->item->id);
 	close_popup(popup);
 	popup->tray->popup = NULL;
 	xdg_wm_base_destroy(popup->wm_base);
@@ -814,7 +813,7 @@ cleanup:
 	cairo_destroy(cairo);
 	return;
 error:
-  sway_log(SWAY_DEBUG, "%s%s %d show_popup_id error (height: %d), no popup_surface", sni->service, sni->menu_path, id, height);
+	sway_log(SWAY_DEBUG, "%s%s %d show_popup_id error (height: %d), no popup_surface", sni->service, sni->menu_path, id, height);
 	list_free_items_and_destroy(hotspots);
 	free(popup_surface);
 	goto cleanup;

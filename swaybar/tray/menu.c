@@ -103,20 +103,24 @@ static cairo_surface_t *read_png(const void *data, size_t data_size) {
 }
 
 static int update_item_properties(struct swaybar_menu_item *item,
-		sd_bus_message *msg) {
+		sd_bus_message *msg, bool *changed) {
 	sd_bus_message_enter_container(msg, 'a', "{sv}");
 	while (!sd_bus_message_at_end(msg, 0)) {
+		bool change = false;
 		sd_bus_message_enter_container(msg, 'e', "sv");
 		char *key, *log_value;
 		sd_bus_message_read_basic(msg, 's', &key);
 		if (strcmp(key, "type") == 0) {
 			char *type;
 			sd_bus_message_read(msg, "v", "s", &type);
-			item->is_separator = strcmp(type, "separator") == 0;
+			bool is_separator = strcmp(type, "separator") == 0;
+			change = item->is_separator == is_separator;
+			item->is_separator = is_separator;
 			log_value = type;
 		} else if (strcmp(key, "label") == 0) {
 			char *label;
 			sd_bus_message_read(msg, "v", "s", &label);
+			change = item->label && strcmp(label, item->label) == 0;
 			item->label = realloc(item->label, strlen(label) + 1);
 			if (!item->label) {
 				return -ENOMEM;
@@ -133,16 +137,20 @@ static int update_item_properties(struct swaybar_menu_item *item,
 		} else if (strcmp(key, "enabled") == 0) {
 			int enabled;
 			sd_bus_message_read(msg, "v", "b", &enabled);
+			change = item->enabled != enabled;
 			item->enabled = enabled;
 			log_value = item->enabled ? "true" : "false";
 		} else if (strcmp(key, "visible") == 0) {
 			int visible;
 			sd_bus_message_read(msg, "v", "b", &visible);
+			change = item->visible != visible;
 			item->visible = visible;
 			log_value = item->visible ? "true" : "false";
 		} else if (strcmp(key, "icon-name") == 0) {
-			sd_bus_message_read(msg, "v", "s", &item->icon_name);
-			item->icon_name = strdup(item->icon_name);
+			char *icon_name;
+			sd_bus_message_read(msg, "v", "s", &icon_name);
+			change = strcmp(icon_name, item->icon_name) == 0;
+			item->icon_name = strdup(icon_name);
 			log_value = item->icon_name;
 		} else if (strcmp(key, "icon-data") == 0) {
 			const void *data;
@@ -151,24 +159,31 @@ static int update_item_properties(struct swaybar_menu_item *item,
 			sd_bus_message_read_array(msg, 'y', &data, &data_size);
 			sd_bus_message_exit_container(msg);
 			item->icon_data = read_png(data, data_size);
+			change = true;
 			log_value = item->icon_data ? "<success>" : "<failure>";
 		} else if (strcmp(key, "toggle-type") == 0) {
 			char *toggle_type;
 			sd_bus_message_read(msg, "v", "s", &toggle_type);
 			if (strcmp(toggle_type, "checkmark") == 0) {
+				change = item->toggle_type != MENU_CHECKMARK;
 				item->toggle_type = MENU_CHECKMARK;
 			} else if (strcmp(toggle_type, "radio") == 0) {
+				change = item->toggle_type != MENU_RADIO;
 				item->toggle_type = MENU_RADIO;
 			}
 			log_value = toggle_type;
 		} else if (strcmp(key, "toggle-state") == 0) {
-			sd_bus_message_read(msg, "v", "i", &item->toggle_state);
+			int toggle_state;
+			sd_bus_message_read(msg, "v", "i", &toggle_state);
+			change = item->toggle_state != toggle_state;
+			item->toggle_state = toggle_state;
 			log_value = item->toggle_state == 0 ? "off" :
 						item->toggle_state == 1 ? "on" : "indeterminate";
 		} else if (strcmp(key, "children-display") == 0) {
 			char *children_display;
 			sd_bus_message_read(msg, "v", "s", &children_display);
 			if (strcmp(children_display, "submenu") == 0) {
+				//change = true;
 				if (item->children) {
 					sway_log(SWAY_DEBUG, "%s%s %d free existing item->children? (%d)", item->sni->service, item->sni->menu_path, item->id, item->children->length);
 					// list_free(item->children);
@@ -185,8 +200,9 @@ static int update_item_properties(struct swaybar_menu_item *item,
 			log_value = "<ignored>";
 		}
 		sd_bus_message_exit_container(msg);
-		sway_log(SWAY_DEBUG, "%s%s %d %s = '%s'", item->sni->service,
-				item->sni->menu_path, item->id, key, log_value);
+		sway_log(SWAY_DEBUG, "%s%s %d %s = '%s' %s", item->sni->service,
+				item->sni->menu_path, item->id, key, log_value, change ? "CHANGED" : "");
+		*changed |= change;
 	}
 	return sd_bus_message_exit_container(msg);
 }
@@ -209,6 +225,7 @@ static int get_layout_callback(sd_bus_message *msg, void *data,
 	sd_bus_message_read_basic(msg, 'u', &revision);
 	sway_log(SWAY_DEBUG, "%s%s %d GetLayout callback (revision %u)", sni->service, sni->menu_path, id, revision);
 
+	bool changed = false;
 	int ret = 0;
 	struct swaybar_menu_item *parent = NULL;
 	while (!sd_bus_message_at_end(msg, 1)) {
@@ -229,7 +246,7 @@ static int get_layout_callback(sd_bus_message *msg, void *data,
 		item->toggle_state = -1;
 
 		sd_bus_message_read_basic(msg, 'i', &item->id);
-		ret = update_item_properties(item, msg);
+		ret = update_item_properties(item, msg, &changed);
 		if (ret < 0) {
 			break;
 		}
@@ -311,13 +328,14 @@ static int handle_items_properties_updated(sd_bus_message *msg, void *data,
 	struct swaybar_sni *sni = data;
 	sway_log(SWAY_DEBUG, "%s%s items properties updated", sni->service, sni->menu_path);
 
+	bool changed = false;
 	// update properties
 	sd_bus_message_enter_container(msg, 'a', "(ia{sv})");
 	while (!sd_bus_message_at_end(msg, 0)) {
 		sd_bus_message_enter_container(msg, 'r', "ia{sv}");
 		int id;
 		sd_bus_message_read_basic(msg, 'i', &id);
-		update_item_properties(*menu_find_item(&sni->menu, id), msg);
+		update_item_properties(*menu_find_item(&sni->menu, id), msg, &changed);
 	}
 
 	// removed properties
@@ -333,15 +351,20 @@ static int handle_items_properties_updated(sd_bus_message *msg, void *data,
 		if (keys) {
 			for (char **key = keys; *key; ++key) {
 				if (strcmp(*key, "type") == 0) {
+					//changed |= item->is_separator != false;
 					item->is_separator = false;
 				} else if (strcmp(*key, "label") == 0) {
+					//changed |= item->label != NULL;
 					free(item->label);
 					item->label = NULL;
 				} else if (strcmp(*key, "enabled") == 0) {
+					//changed |= item->enabled != true;
 					item->enabled = true;
+					//changed |= item->visible != true;
 				} else if (strcmp(*key, "visible") == 0) {
 					item->visible = true;
 				} else if (strcmp(*key, "children-display") == 0) {
+					//changed |= true;
 					for (int i = 0; i < item->children->length; ++i) {
 						destroy_menu(item->children->items[i]);
 					}
